@@ -27,6 +27,20 @@ This file documents important information from developer sessions.
 ### Language Policy
 - **All code and documentation must be in English**, regardless of the language used in communication.
 
+### Mandatory Change Requirements
+
+Every implementation change must satisfy all of the following requirements before it is considered complete:
+
+1. **Implement or update automated tests.** New behaviour, bug fixes, edge cases, and regressions must be covered by tests at the appropriate level. A change that alters executable behaviour without corresponding test coverage is incomplete.
+2. **Run the relevant quality checks.** At minimum, run the affected test suite and the configured linting and formatting checks. Report any check that could not be run and why.
+3. **Update documentation.** Any change to behaviour, public interfaces, configuration, architecture, setup, or operator workflows must update the relevant documentation in the same change. Documentation-only updates do not require new tests unless they modify executable examples or validation tooling.
+4. **Keep examples executable.** Commands, configuration snippets, API examples, and documented model or provider capabilities must match the implemented code and supported versions.
+5. **Do not weaken verification to make a change pass.** Tests may only be removed or relaxed when the underlying requirement has intentionally changed, and that change must be documented.
+
+### Definition of Done
+
+A task is complete only when its implementation, automated tests, and documentation agree; all relevant checks pass; and no generated files, credentials, caches, build artefacts, or local environment files are included in the change.
+
 ### Tech Stack
 - **Language**: Python
 - **Testing**: pytest
