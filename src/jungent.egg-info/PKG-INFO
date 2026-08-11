@@ -1,0 +1,57 @@
+Metadata-Version: 2.4
+Name: jungent
+Version: 0.1.0
+Summary: A bleeding-edge AI code assistant
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: httpx>=0.27.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.4.0; extra == "dev"
+Requires-Dist: ruff>=0.1.0; extra == "dev"
+Requires-Dist: black>=23.0.0; extra == "dev"
+
+# Jungent
+
+Jungent is a code assistant built around one uncompromising idea: use cutting-edge technology all the time.
+
+Most coding agents are designed around stability. Their foundations, models, tools, and orchestration layers inevitably age while the field moves forward. Jungent takes the opposite approach. It is designed to adopt the latest useful advances in AI-assisted software engineering as soon as they become viable.
+
+## Why Jungent?
+
+AI engineering is evolving too quickly for a conventional release model. New models, inference techniques, agent architectures, context-management strategies, tool protocols, and evaluation methods appear constantly. Jungent exists to turn those advances into a working code assistant without waiting for them to become yesterday's safe default.
+
+The name combines **young** with **agent**: an agent whose technology never grows old.
+
+## Project Stage: Bleeding Edge
+
+Jungent is intentionally classified as **bleeding edge**.
+
+This is not a temporary phase on the way to a frozen stable branch. The project will evolve too quickly for long-term stabilization to be its primary goal. Components may be replaced whenever a materially better approach becomes available, and the architecture will remain open to continuous change.
+
+Bleeding edge, however, does not mean careless. Jungent applies senior-level quality engineering and AI expertise to control the risks created by rapid evolution. Every significant change is expected to pass automated testing, regression analysis, capability evaluation, and practical validation before it becomes part of the trusted working system.
+
+## The Promise
+
+Jungent aims to offer access to the newest effective technology while earning the same operational confidence developers place in the stable releases of established coding agents such as **OpenAI Codex**, **Anthropic Claude Code**, and **Google Gemini CLI**.
+
+That confidence will be built through evidence rather than release labels:
+
+- Continuous functional, integration, and regression testing
+- Model and agent capability evaluations
+- Reproducible benchmarks for critical workflows
+- Explicit tracking of behavioural and performance changes
+- Fast rollback when a new component fails to meet its quality threshold
+- Human validation informed by extensive QA and AI engineering experience
+
+## Core Principles
+
+1. **Always current.** Adopt meaningful advances quickly.
+2. **Quality is engineered.** Trust comes from verification, not from age.
+3. **Replace without nostalgia.** No component is permanent when a better one exists.
+4. **Measure real capability.** Prefer reproducible results over marketing claims.
+5. **Move fast without guessing.** Rapid change must remain observable, testable, and reversible.
+
+## Status
+
+Jungent is under active development. Interfaces, dependencies, behaviours, and internal architecture may change frequently as the project follows the frontier of AI-assisted software engineering.
+
