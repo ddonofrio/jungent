@@ -3,15 +3,14 @@
 import pytest
 from unittest.mock import MagicMock, patch
 
+from jungent.providers import OpenAIProvider
+
 
 class AsyncMock(MagicMock):
     """Async mock helper for async methods."""
 
     async def __call__(self, *args, **kwargs):
         return super().__call__(*args, **kwargs)
-
-
-from jungent.providers import OpenAIProvider
 
 
 class TestOpenAIProvider:

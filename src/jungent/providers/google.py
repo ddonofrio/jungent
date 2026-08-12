@@ -1,13 +1,14 @@
-"""Google Gemini provider implementation."""
+"""Google Gemini provider implementation with structured contract."""
 
 import os
 from typing import Any, Dict, List, Optional
 
+from ..models import Request, Response
 from .base import BaseProvider, ProviderModel
 
 
 class GoogleProvider(BaseProvider):
-    """Provider for Google Gemini models."""
+    """Provider for Google Gemini models with structured request/response."""
 
     provider_id = "google"
     provider_name = "Google Gemini"
@@ -52,7 +53,13 @@ class GoogleProvider(BaseProvider):
         max_tokens: Optional[int] = None,
         tools: Optional[List[Dict[str, Any]]] = None,
     ) -> str:
-        """Generate a response using Google's API."""
+        """Generate a response using Google's API (deprecated string-based interface).
+
+        .. deprecated::
+            This method is preserved for backward compatibility but uses the structured
+            provider contract internally. New code should use generate_response_structured()
+            with canonical Request/Response types.
+        """
         # Validate inputs
         self._validate_prompt(prompt)
         self._validate_model(model)
@@ -61,8 +68,8 @@ class GoogleProvider(BaseProvider):
         if not self.api_key:
             raise ValueError("Google API key not provided")
 
-        # Build request payload
-        payload: Dict[str, Any] = {
+        # Build request payload (same as structured version)
+        payload = {
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {
                 "temperature": temperature,
@@ -72,22 +79,76 @@ class GoogleProvider(BaseProvider):
 
         if tools:
             payload["tools"] = [
-                {"function_declarations": [t.get("function", {}) for t in tools]}
+                {"function_declarations": [t.function.to_dict() for t in tools]}
             ]
 
         # Make request with retry logic
         data = await self._make_request(
-            url=f"{self.api_base_url}/models/{model}:generateContent",
+            url=f"{self.api_base_url}/models/{model or 'gemini-1.5-pro'}:generateContent",
             headers={"content-type": "application/json"},
             params={"key": self.api_key},
             json_data=payload,
         )
 
+        # Return text from parsed response (still uses _parse_response_data for backward compat)
         return self._parse_response_data(data)
+
+    async def generate_response_structured(
+        self,
+        request: Request,
+        **kwargs: Any,
+    ) -> Response:
+        """Generate a response using structured request (canonical API)."""
+        if not request.messages:
+            raise ValueError("Request must contain at least one message")
+
+        if not self.api_key:
+            raise ValueError("Google API key not provided")
+
+        # Convert canonical Request to Google payload
+        payload = {
+            "contents": [
+                {"parts": [{"text": msg.content} for msg in request.messages]}
+                for _ in range(len(request.messages))
+            ],
+            "generationConfig": {
+                "temperature": request.temperature,
+                "maxOutputTokens": request.max_tokens,
+            },
+        }
+
+        if request.tools:
+            payload["tools"] = [
+                {"function_declarations": [t.function.to_dict() for t in request.tools]}
+            ]
+
+        # Make request with retry logic
+        data = await self._make_request(
+            url=f"{self.api_base_url}/models/{request.model or 'gemini-1.5-pro'}:generateContent",
+            headers={"content-type": "application/json"},
+            params={"key": self.api_key},
+            json_data=payload,
+        )
+
+        # Convert to canonical Response
+        return Response.from_dict(data)
 
     def _parse_response_data(self, data: Dict[str, Any]) -> str:
         """Parse Google response data to extract text."""
-        return data["candidates"][0]["content"]["parts"][0]["text"]
+        if not isinstance(data["candidates"], list):
+            raise ValueError(
+                f"Unexpected response format from provider 'google': {data}"
+            )
+
+        candidate = data["candidates"][0]
+        if not candidate or "content" not in candidate:
+            raise ValueError(f"Missing content in candidate: {candidate}")
+
+        parts = candidate["content"].get("parts", [])
+        if not parts:
+            raise ValueError(f"Missing parts in content: {parts}")
+
+        return parts[0].get("text", "")
 
     def list_models(self) -> List[ProviderModel]:
         """List all available models from Google."""

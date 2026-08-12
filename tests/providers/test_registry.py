@@ -3,12 +3,17 @@
 import pytest
 from typing import Optional, Type
 
-from jungent.providers import BaseProvider, ProviderModel, ProviderRegistry, ProviderConfig
+from jungent.providers import (
+    BaseProvider,
+    ProviderModel,
+    ProviderRegistry,
+    ProviderConfig,
+)
 
 
 def _create_mock_provider_class(provider_id: str) -> Type[BaseProvider]:
     """Factory function to create unique mock provider classes."""
-    
+
     class MockProvider(BaseProvider):
         provider_name = ""
 
@@ -49,9 +54,6 @@ def _create_mock_provider_class(provider_id: str) -> Type[BaseProvider]:
         @property
         def provider_id(self) -> str:
             return provider_id
-
-    # Set provider_name using setattr to avoid class scope issues
-    setattr(MockProvider, 'provider_name', f"Mock {provider_id}")
 
     return MockProvider
 
@@ -249,7 +251,7 @@ class TestProviderRegistry:
         # enabled_providers takes precedence
         config = {
             "enabled_providers": ["mock1", "mock2"],
-            "disabled_providers": ["mock2"]
+            "disabled_providers": ["mock2"],
         }
         registry.load_from_config(config)
 

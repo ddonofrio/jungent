@@ -1,6 +1,6 @@
 # AI Providers
 
-The AI Providers module provides a unified interface for interacting with multiple AI providers. It supports over 30 providers across different categories including cloud providers, local models, and AI gateways.
+The AI Providers module provides a unified interface for interacting with multiple AI providers. It currently supports three providers: OpenAI, Anthropic (Claude), and Google Gemini. Additional providers can be added by inheriting from `BaseProvider`.
 
 ## Architecture
 
@@ -9,19 +9,22 @@ The providers module is built around two main components:
 - **BaseProvider**: An abstract base class that defines the interface for all providers
 - **ProviderRegistry**: A registry that manages multiple provider instances
 
-## Provider Categories
+## Supported Providers
 
-### Cloud Providers
+### Implemented Adapters
+
+1. **OpenAI** - GPT models (gpt-4o, gpt-4-turbo, gpt-3.5-turbo, o1, o1-mini)
+2. **Anthropic** - Claude models (claude-3-7-sonnet, claude-3-5-sonnet, claude-3-opus, claude-3-haiku)
+3. **Google Gemini** - gemini models (gemini-1.5-pro, gemini-1.5-flash, gemini-1.0-pro)
+
+### Provider Categories
+
+#### Cloud Providers
 - Anthropic (Claude models)
-- OpenAI (GPT-4, GPT-3.5, o1)
+- OpenAI (GPT models)
 - Google Gemini
 
-### Local & Self-Hosted
-- Ollama
-- LM Studio
-- Atomic Chat
-
-### AI Gateways
+#### AI Gateways
 - OpenRouter
 - Requesty
 - DaoXE
@@ -103,6 +106,27 @@ All providers implement the following interface:
 
 ```python
 class BaseProvider:
+    # Synchronous method - list models from hardcoded catalog or API call
+    def list_models(self) -> List[ProviderModel]:
+        """List all available models."""
+
+    # Synchronous method - get a specific model by ID
+    def get_model(self, model_id: str) -> Optional[ProviderModel]:
+        """Get a specific model by ID."""
+
+    # Synchronous method - check if a model is supported
+    def supports_model(self, model_id: str) -> bool:
+        """Check if a model is supported."""
+
+    # Asynchronous method - generate response using structured API
+    async def generate_response_structured(
+        self,
+        request: Request,
+        **kwargs: Any,
+    ) -> Response:
+        """Generate a response using the structured provider contract."""
+
+    # Legacy synchronous string-based interface (deprecated but preserved)
     async def generate_response(
         self,
         prompt: str,
@@ -111,16 +135,7 @@ class BaseProvider:
         max_tokens: Optional[int] = None,
         tools: Optional[List[Dict]] = None,
     ) -> str:
-        """Generate a response from the model."""
-
-    async def list_models(self) -> List[ProviderModel]:
-        """List all available models."""
-
-    def get_model(self, model_id: str) -> Optional[ProviderModel]:
-        """Get a specific model by ID."""
-
-    def supports_model(self, model_id: str) -> bool:
-        """Check if a model is supported."""
+        """Generate a response from the model (legacy string API)."""
 ```
 
 ### ProviderRegistry
@@ -190,3 +205,10 @@ Providers can read API keys from environment variables:
 | Anthropic | `ANTHROPIC_API_KEY` |
 | OpenAI | `OPENAI_API_KEY` |
 | Google | `GOOGLE_API_KEY` |
+
+## Interface Notes
+
+- `list_models()` is **synchronous** - models are loaded from a catalog or cached API response
+- `generate_response_structured()` uses the canonical `Request/Response` types for all providers
+- `generate_response()` (string-based) is deprecated but preserved for backward compatibility
+- All provider-specific translation happens inside adapter implementations

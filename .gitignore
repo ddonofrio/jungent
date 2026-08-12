@@ -1,30 +1,45 @@
-.tmp/
-.temp/
-
-**pycache**/
+# Python
+__pycache__/
 *.py[cod]
 *$py.class
-
+*.so
 .pytest_cache/
 .coverage
 .coverage.*
 htmlcov/
-.tox/
-.nox/
-
-*.egg-info/
-.eggs/
-dist/
-build/
-
-.venv/
-venv/
-env/
-
 .mypy_cache/
 .ruff_cache/
 .pyright/
+pytest_output.txt
 
+# Virtual environments
+.venv/
+venv/
+env/
+.eggs/
+
+# Build artifacts
+*.egg-info/
+dist/
+build/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Test outputs
+.tox/
+.nox/
 test-results/
 coverage.xml
 pytestdebug.log
+
+# Environment files (if needed)
+.env
+
+# Temporary files
+.tmp/
+.temp/

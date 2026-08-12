@@ -3,15 +3,14 @@
 import pytest
 from unittest.mock import MagicMock, patch
 
+from jungent.providers import GoogleProvider
+
 
 class AsyncMock(MagicMock):
     """Async mock helper for async methods."""
 
     async def __call__(self, *args, **kwargs):
         return super().__call__(*args, **kwargs)
-
-
-from jungent.providers import GoogleProvider
 
 
 class TestGoogleProvider:
@@ -94,7 +93,9 @@ class TestGoogleProvider:
 
         with patch.object(provider, "_make_request") as mock_make_request:
             mock_make_request.return_value = {
-                "candidates": [{"content": {"parts": [{"text": "Response with tool"}]}}],
+                "candidates": [
+                    {"content": {"parts": [{"text": "Response with tool"}]}}
+                ],
             }
 
             result = await provider.generate_response(

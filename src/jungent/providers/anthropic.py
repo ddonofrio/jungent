@@ -60,7 +60,13 @@ class AnthropicProvider(BaseProvider):
         max_tokens: Optional[int] = None,
         tools: Optional[List[Dict[str, Any]]] = None,
     ) -> str:
-        """Generate a response using Anthropic's API."""
+        """Generate a response using Anthropic's API (deprecated string-based interface).
+
+        .. deprecated::
+            This method is preserved for backward compatibility but uses the structured
+            provider contract internally. New code should use generate_response_structured()
+            with canonical Request/Response types.
+        """
         # Validate inputs
         self._validate_prompt(prompt)
         self._validate_model(model)

@@ -3,15 +3,14 @@
 import pytest
 from unittest.mock import MagicMock, patch
 
+from jungent.providers import AnthropicProvider
+
 
 class AsyncMock(MagicMock):
     """Async mock helper for async methods."""
 
     async def __call__(self, *args, **kwargs):
         return super().__call__(*args, **kwargs)
-
-
-from jungent.providers import AnthropicProvider
 
 
 class TestAnthropicProvider:
@@ -67,7 +66,9 @@ class TestAnthropicProvider:
                 "content": [{"text": "Test response"}],
             }
 
-            result = await provider.generate_response("Test prompt", "claude-3-7-sonnet-20250219")
+            result = await provider.generate_response(
+                "Test prompt", "claude-3-7-sonnet-20250219"
+            )
 
             assert result == "Test response"
             mock_make_request.assert_called_once()
@@ -78,7 +79,9 @@ class TestAnthropicProvider:
         provider = AnthropicProvider(_skip_api_key_validation=True)
 
         with pytest.raises(ValueError, match="Anthropic API key not provided"):
-            await provider.generate_response("Test prompt", "claude-3-7-sonnet-20250219")
+            await provider.generate_response(
+                "Test prompt", "claude-3-7-sonnet-20250219"
+            )
 
     @pytest.mark.asyncio
     async def test_generate_response_with_tools(self):
