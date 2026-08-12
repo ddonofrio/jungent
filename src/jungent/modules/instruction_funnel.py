@@ -1,5 +1,6 @@
 """Instruction Funnel module - reduces instruction load."""
 
+import asyncio
 import json
 import logging
 from datetime import datetime, timezone
@@ -7,7 +8,7 @@ from typing import Any, Dict, List, Optional
 
 from ..models import Message, Request
 from ..proxy.models import Action, Packet, PacketAction, ProxyDirection
-from .base import Module
+from .base import Module, PipelineContext
 
 logger = logging.getLogger(__name__)
 
@@ -163,17 +164,24 @@ Respond with exactly one of: PASS, REWRITE, CUT and provide reasoning."""
     ) -> Action:
         """Fallback heuristic-based analysis when LLM decision is unavailable."""
 
-    def _estimate_token_count(self, messages: List[Dict[str, Any]]) -> int:
-        """Estimate token count from messages."""
-        total = 0
-        for msg in messages:
-            content = msg.get("content", "")
-            # More accurate estimate than just counting words // 4
-            if isinstance(content, str):
-                total += len(content) // 1.5  # Rough chars per token
-        return total
+        # Scenario A: Large initial prompt with tool catalogues (~7K tokens)
+        total_tokens = self._estimate_token_count(messages)
 
-    def _is_work_order_request(self, messages: List[Dict[str, Any]]) -> bool:
+        if total_tokens > 5000:
+            return self._handle_large_prompt_sync(messages, conversation_id)
+
+        # Scenario B: Work-order request (look, find, execute keywords)
+        if self._is_work_order_request(messages):
+            return self._handle_work_order_sync(messages, conversation_id)
+
+        # Check for error recovery scenarios (PSSecurityException patterns)
+        last_msg = messages[-1] if messages else {}
+        content = last_msg.get("content", "")
+        if "PSSecurityException" in content or "scripts is disabled" in content.lower():
+            return self._handle_power_shell_recovery_sync(messages, conversation_id)
+
+        # Default: pass through unchanged
+        return Action(action_type=PacketAction.PASS)
         """Check if this is a work-order request."""
         if not messages:
             return False
@@ -183,34 +191,27 @@ Respond with exactly one of: PASS, REWRITE, CUT and provide reasoning."""
         work_order_keywords = ["look in", "find file", "execute", "run"]
         return any(keyword in content for keyword in work_order_keywords)
 
-    async def _handle_large_prompt(
+    def _handle_large_prompt_sync(
         self,
         messages: List[Dict[str, Any]],
         conversation_id: str,
     ) -> Action:
-        """Handle large initial prompt with tool catalogues.
-
-        Scenario A: Extract tool definitions from system/user messages,
-        store them in active memory, and rewrite context to remove
-        irrelevant tool payload while preserving personality/greeting.
-        """
+        """Handle large initial prompt with tool catalogues (synchronous version)."""
         # Extract tool definitions from all message types
         tools = []
         personality_instructions = ""
-        greeting_found = False
 
         for msg in messages:
             role = msg.get("role", "")
             content = msg.get("content", "")
 
             if role == "system":
-                # System messages typically contain instructions/personality
                 personality_instructions += content + "\n"
-            elif role in ("user", "assistant") and self._extract_tools_from_content(
-                content
-            ):
-                # Look for tool definitions in user/assistant messages
-                tools.extend(self._parse_tool_definitions(content))
+            elif role in ("user", "assistant"):
+                # Extract tools from user/assistant messages
+                parsed_tools = self._parse_tool_definitions(content)
+                if parsed_tools:
+                    tools.extend(parsed_tools)
 
         # Store extracted tools in active memory
         if conversation_id:
@@ -218,18 +219,59 @@ Respond with exactly one of: PASS, REWRITE, CUT and provide reasoning."""
                 self._memory[conversation_id] = []
             self._memory[conversation_id].extend(tools)
 
-        # Rewrite to keep system instructions and first user message (greeting)
-        rewritten_messages = self._build_reduced_context(
-            messages, personality_instructions, greeting_found
+        return Action(
+            action_type=PacketAction.REWRITE,
+            rewrite_rules={"messages": messages[:2]},  # Keep first few messages only
+            metadata={"scenario": "large_prompt", "tools_extracted": len(tools)},
         )
+
+    def _handle_work_order_sync(
+        self,
+        messages: List[Dict[str, Any]],
+        conversation_id: str,
+    ) -> Action:
+        """Handle work-order request (synchronous version)."""
+        # Keep only the objective and necessary facts
+        rewritten = []
+
+        for msg in messages:
+            if msg.get("role") == "system":
+                rewritten.append(msg)
+
+        # Find user's current objective (last non-system message before tool calls)
+        last_user_obj = None
+        for msg in reversed(messages):
+            if msg.get("role") != "tool" and msg.get("role") != "assistant":
+                last_user_obj = msg
+                break
+
+        if last_user_obj:
+            rewritten.append(last_user_obj)
 
         return Action(
             action_type=PacketAction.REWRITE,
-            rewrite_rules={
-                "messages": rewritten_messages,
-            },
-            metadata={"scenario": "large_prompt", "tools_extracted": len(tools)},
+            rewrite_rules={"messages": rewritten},
+            metadata={"scenario": "work_order", "relevant_tools": len(self._memory.get(conversation_id, []))},
         )
+
+    def _handle_power_shell_recovery_sync(
+        self,
+        messages: List[Dict[str, Any]],
+        conversation_id: str,
+    ) -> Action:
+        """Handle PowerShell recovery (synchronous version)."""
+        # Remove the failing attempt and add recovery info
+        filtered_messages = [
+            msg for msg in messages if "PSSecurityException" not in (msg.get("content") or "")
+        ]
+
+        return Action(
+            action_type=PacketAction.REWRITE,
+            rewrite_rules={"messages": filtered_messages + [{"role": "assistant", "content": "[Recovery] Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass; .\\script\\start-vite.ps1"}]},
+            metadata={"scenario": "error_repair", "recovery_applied": True},
+        )
+
+    def _estimate_token_count(self, messages: List[Dict[str, Any]]) -> int:
 
     def _extract_tools_from_content(self, content: str) -> bool:
         """Check if content contains tool definitions."""
@@ -356,6 +398,30 @@ Respond with exactly one of: PASS, REWRITE, CUT and provide reasoning."""
 
         return rewritten
 
+    def _estimate_token_count(self, messages: List[Dict[str, Any]]) -> int:
+        """Estimate token count from messages."""
+        total = 0
+        for msg in messages:
+            content = msg.get("content", "")
+            # More accurate estimate than just counting words // 4
+            if isinstance(content, str):
+                total += len(content) // 1.5  # Rough chars per token
+        return total
+
+    def _is_work_order_request(self, messages: List[Dict[str, Any]]) -> bool:
+        """Check if this is a work-order request."""
+        if not messages:
+            return False
+        last_msg = messages[-1]
+        content = last_msg.get("content", "").lower()
+        # Check for work-order keywords using any() instead of loop
+        work_order_keywords = ["look in", "find file", "execute", "run"]
+        return any(keyword in content for keyword in work_order_keywords)
+
+    def _get_relevant_tools(self, conversation_id: str) -> List[Dict[str, Any]]:
+        """Get relevant tools for current task."""
+        return self._memory.get(conversation_id, [])[:5]  # Limit to top 5 tools
+
     async def cut_context(
         self,
         packet: Packet,
@@ -456,3 +522,220 @@ Respond with exactly one of: PASS, REWRITE, CUT and provide reasoning."""
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
         )
+
+    def _extract_tools_from_content(self, content: str) -> bool:
+        """Check if content contains tool definitions."""
+        # Heuristic: look for common tool pattern indicators
+        tool_indicators = [
+            "function",
+            "parameters", 
+            "tool:",
+            "```json",
+            "def ",  # Python function definition
+        ]
+        return any(indicator in content.lower() for indicator in tool_indicators)
+
+    def _parse_tool_definitions(self, content: str) -> List[Dict[str, Any]]:
+        """Parse tool definitions from content."""
+        tools = []
+        lines = content.split("\n")
+
+        # Look for JSON-like tool blocks or markdown code blocks
+        in_code_block = False
+        current_tools_str = ""
+
+        for line in lines:
+            if "```json" in line.lower():
+                in_code_block = True
+                continue
+            elif "```" in line.lower() and in_code_block:
+                # Parse the accumulated JSON
+                if current_tools_str.strip():
+                    try:
+                        parsed_tools = json.loads(current_tools_str)
+                        tools.extend(parsed_tools)
+                    except json.JSONDecodeError:
+                        pass  # Skip malformed JSON
+                in_code_block = False
+                current_tools_str = ""
+            elif in_code_block:
+                current_tools_str += line + "\n"
+
+        return tools
+
+    def _build_reduced_context(
+        self,
+        messages: List[Dict[str, Any]],
+        personality_instructions: str,
+        greeting_found: bool,
+    ) -> List[Dict[str, Any]]:
+        """Build reduced context from original messages."""
+        rewritten = []
+
+        # Add system messages (instructions/personality)
+        for msg in messages:
+            if msg.get("role") == "system":
+                rewritten.append(msg)
+
+        # Check if we have a greeting (first non-system message)
+        first_user_msg = None
+        for msg in messages:
+            if msg.get("role") != "system":
+                first_user_msg = msg
+                break
+
+        # Add system instructions and first user interaction only
+        rewritten_messages = [
+            {"role": "system", "content": personality_instructions.strip()},
+        ]
+
+        if first_user_msg:
+            rewritten_messages.append(first_user_msg)
+
+        return rewritten_messages
+
+    def _estimate_token_count(self, messages: List[Dict[str, Any]]) -> int:
+        """Estimate token count from messages."""
+        total = 0
+        for msg in messages:
+            content = msg.get("content", "")
+            # More accurate estimate than just counting words // 4
+            if isinstance(content, str):
+                total += len(content) // 1.5  # Rough chars per token
+        return total
+
+    def _is_work_order_request(self, messages: List[Dict[str, Any]]) -> bool:
+        """Check if this is a work-order request."""
+        if not messages:
+            return False
+        last_msg = messages[-1]
+        content = last_msg.get("content", "").lower()
+        # Check for work-order keywords using any() instead of loop
+        work_order_keywords = ["look in", "find file", "execute", "run"]
+        return any(keyword in content for keyword in work_order_keywords)
+
+    def _get_relevant_tools(self, conversation_id: str) -> List[Dict[str, Any]]:
+        """Get relevant tools for current task."""
+        return self._memory.get(conversation_id, [])[:5]  # Limit to top 5 tools
+
+    def _build_work_order_context(
+        self,
+        messages: List[Dict[str, Any]],
+        relevant_tools: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """Build context for work-order request."""
+        # Keep only the objective and necessary facts
+        rewritten = []
+
+        # Add system instructions
+        for msg in messages:
+            if msg.get("role") == "system":
+                rewritten.append(msg)
+
+        # Find user's current objective (last non-system message before tool calls)
+        last_user_obj = None
+        for msg in reversed(messages):
+            if msg.get("role") != "tool" and msg.get("role") != "assistant":
+                last_user_obj = msg
+                break
+
+        if last_user_obj:
+            rewritten.append(last_user_obj)
+
+        return rewritten
+
+    def _estimate_token_count(self, messages: List[Dict[str, Any]]) -> int:
+        """Estimate token count from messages."""
+        total = 0
+        for msg in messages:
+            content = msg.get("content", "")
+            # More accurate estimate than just counting words // 4
+            if isinstance(content, str):
+                total += len(content) // 1.5  # Rough chars per token
+        return total
+
+    def _is_work_order_request(self, messages: List[Dict[str, Any]]) -> bool:
+        """Check if this is a work-order request."""
+        if not messages:
+            return False
+        last_msg = messages[-1]
+        content = last_msg.get("content", "").lower()
+        # Check for work-order keywords using any() instead of loop
+        work_order_keywords = ["look in", "find file", "execute", "run"]
+        return any(keyword in content for keyword in work_order_keywords)
+
+    def _get_relevant_tools(self, conversation_id: str) -> List[Dict[str, Any]]:
+        """Get relevant tools for current task."""
+        return self._memory.get(conversation_id, [])[:5]  # Limit to top 5 tools
+
+    async def cut_context(
+        self,
+        packet: Packet,
+        message_ids: List[str],
+        replacement: Optional[str] = None,
+    ) -> Action:
+        """Request context cutting for obsolete messages.
+
+        After a corrected attempt supersedes a failed one, request CUT action
+        to remove the obsolete assistant tool call and its paired tool result.
+        Preserve or insert compact factual replacement when needed.
+        """
+        return Action(
+            action_type=PacketAction.CUT,
+            cut_ids=message_ids,
+            cut_replacement=replacement,
+            metadata={"scenario": "context_cut"},
+        )
+
+    async def repair_error_recovery(
+        self,
+        packet: Packet,
+        error_message: str,
+    ) -> Action:
+        """Handle failed-attempt recovery.
+
+        Scenario C: Recognize actionable tool errors and rewrite context with
+        compact recovery instruction. Does not claim command succeeded before
+        corresponding tool result arrives.
+        """
+        # Check for PowerShell security exception pattern
+        if (
+            "PSSecurityException" in error_message
+            or "scripts is disabled" in error_message.lower()
+        ):
+            recovery_instruction = (
+                "Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass; "
+                ".\\script\\start-vite.ps1"
+            )
+
+            return Action(
+                action_type=PacketAction.REWRITE,
+                rewrite_rules={
+                    "messages": self._build_recovery_context(
+                        packet.working, recovery_instruction
+                    ),
+                },
+                metadata={"scenario": "error_repair", "recovery_applied": True},
+            )
+
+        # Default: pass through unchanged (no special repair needed)
+        return Action(action_type=PacketAction.PASS)
+
+    def _build_recovery_context(
+        self,
+        packet_data: Dict[str, Any],
+        recovery_instruction: str,
+    ) -> List[Dict[str, Any]]:
+        """Build context with recovery instruction."""
+        messages = packet_data.get("messages", [])
+
+        # Remove the failing attempt and add recovery info
+        filtered_messages = [
+            msg
+            for msg in messages
+            if "PSSecurityException" not in (msg.get("content") or "")
+        ]
+
+        return filtered_messages + [
+            {"role": "assistant", "content": f"[Recovery] {recovery_instruction}"}
+        ]

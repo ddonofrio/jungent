@@ -264,20 +264,42 @@ class BaseProvider(ABC):
 class MockProvider1(BaseProvider):
     """Simple mock provider for enable/disable edge case tests."""
 
-    def __init__(self, api_key: Optional[str] = None) -> None:
-        super().__init__(api_key=api_key)
+    @property
+    def provider_id(self) -> str:
+        return "mock-1"
+
+    @property
+    def provider_name(self) -> str:
+        return "Mock Provider 1"
+
+    def _get_default_api_base_url(self) -> str:
+        return "https://api.mock.com"
+
+    async def generate_response(
+        self,
+        prompt: str,
+        model: str,
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+        tools: Optional[List[Dict[str, Any]]] = None,
+    ) -> str:
+        return "Mock response"
+
+    def list_models(self) -> List[ProviderModel]:
+        return [ProviderModel(id="mock-model-1", name="Mock Model 1")]
+
+    def _parse_response_data(self, data: Dict[str, Any]) -> str:
+        return data.get("content", "")[0].get("text", "") if isinstance(data.get("content"), list) else ""
 
 
 class MockProvider2(MockProvider1):
     """Second variant of mock provider for different test scenarios."""
 
-    pass
+    @property
+    def provider_id(self) -> str:
+        return "mock-2"
 
+    @property
+    def provider_name(self) -> str:
+        return "Mock Provider 2"
 
-# Implement abstract method for mock providers to make them usable
-def _mock_parse_response(self, data: Dict[str, Any]) -> str:
-    """Mock response parsing that returns first content field or empty string."""
-    return data.get("content", "")[0].get("text", "") if isinstance(data.get("content"), list) else ""
-
-
-BaseProvider._parse_response_data = _mock_parse_response
