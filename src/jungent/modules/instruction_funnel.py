@@ -182,7 +182,6 @@ Respond with exactly one of: PASS, REWRITE, CUT and provide reasoning."""
 
         # Default: pass through unchanged
         return Action(action_type=PacketAction.PASS)
-        """Check if this is a work-order request."""
         if not messages:
             return False
         last_msg = messages[-1]

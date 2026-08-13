@@ -77,9 +77,7 @@ class BaseProvider(ABC):
         self.api_key = api_key or kwargs.get("api_key")
         self.config = kwargs
         self.models: List[ProviderModel] = []
-        self.api_base_url = kwargs.get(
-            "api_base_url", self._get_default_api_base_url()
-        )
+        self.api_base_url = kwargs.get("api_base_url", self._get_default_api_base_url())
         self.timeout = kwargs.get("timeout", 30.0)
         self.max_retries = kwargs.get("max_retries", 3)
         self.retry_delay = kwargs.get("retry_delay", 1.0)
@@ -145,7 +143,7 @@ class BaseProvider(ABC):
 
     async def check_health(self) -> Dict[str, Any]:
         """Check if the provider is healthy and API key is valid.
-        
+
         Returns a dict with 'healthy' boolean and optional 'error' message.
         """
         try:
@@ -230,9 +228,7 @@ class BaseProvider(ABC):
     def _validate_temperature(self, temperature: float) -> None:
         """Validate temperature parameter is in valid range."""
         if not 0 <= temperature <= 2:
-            raise ValueError(
-                f"Temperature must be between 0 and 2, got {temperature}"
-            )
+            raise ValueError(f"Temperature must be between 0 and 2, got {temperature}")
 
     def _validate_max_tokens(self, max_tokens: Optional[int]) -> None:
         """Validate max_tokens parameter if provided."""
@@ -289,7 +285,11 @@ class MockProvider1(BaseProvider):
         return [ProviderModel(id="mock-model-1", name="Mock Model 1")]
 
     def _parse_response_data(self, data: Dict[str, Any]) -> str:
-        return data.get("content", "")[0].get("text", "") if isinstance(data.get("content"), list) else ""
+        return (
+            data.get("content", "")[0].get("text", "")
+            if isinstance(data.get("content"), list)
+            else ""
+        )
 
 
 class MockProvider2(MockProvider1):
@@ -302,4 +302,3 @@ class MockProvider2(MockProvider1):
     @property
     def provider_name(self) -> str:
         return "Mock Provider 2"
-
